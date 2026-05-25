@@ -5,6 +5,12 @@ const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+const returnRoutes = require("./routes/returnRoutes");
+const refundRoutes = require("./routes/refundRoutes");
+const brandRoutes = require("./routes/brandRoutes");
+const stockRoutes = require("./routes/stockRoutes");
+const warehouseRoutes = require("./routes/warehouseRoutes");
+const transferRoutes = require("./routes/transferRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
@@ -32,6 +38,12 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/returns", returnRoutes);
+app.use("/api/refunds", refundRoutes);
+app.use("/api/brands", brandRoutes);
+app.use("/api/stock", stockRoutes);
+app.use("/api/warehouses", warehouseRoutes);
+app.use("/api/transfers", transferRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
