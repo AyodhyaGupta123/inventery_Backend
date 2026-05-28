@@ -3,11 +3,18 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      default: null,
+    },
+
     name: {
       type: String,
       required: [true, "Name is required"],
       trim: true,
     },
+
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -15,30 +22,64 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+
     phone: {
       type: String,
       default: "",
     },
+
     password: {
       type: String,
       required: [true, "Password is required"],
       minlength: 6,
     },
+
     role: {
       type: String,
-      enum: ["admin", "manager", "staff"],
+      enum: ["super_admin", "admin", "manager", "staff"],
       default: "staff",
     },
+
+    companyType: {
+      type: String,
+      enum: [
+        "Retail",
+        "Manufacturing",
+        "Warehouse",
+        "Distributor",
+        "Pharmacy",
+        "Grocery",
+        "General",
+      ],
+      default: "General",
+    },
+
     isActive: {
       type: Boolean,
       default: true,
     },
-    location: { type: String, default: "" },
-    website: { type: String, default: "" },
-    bio: { type: String, default: "" },
-    company: { type: String, default: "Generic Inventory" },
+
+    location: {
+      type: String,
+      default: "",
+    },
+
+    website: {
+      type: String,
+      default: "",
+    },
+
+    bio: {
+      type: String,
+      default: "",
+    },
+
+    company: {
+      type: String,
+      default: "Generic Inventory",
+    },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 userSchema.pre("save", async function () {

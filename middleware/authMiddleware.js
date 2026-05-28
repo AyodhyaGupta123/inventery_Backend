@@ -5,7 +5,10 @@ const User = require("../models/User");
 const protect = asyncHandler(async (req, res, next) => {
   let token;
 
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
     token = req.headers.authorization.split(" ")[1];
   }
 
@@ -43,7 +46,32 @@ const authorize = (...roles) => {
   };
 };
 
+const superAdminOnly = (req, res, next) => {
+  if (req.user && req.user.role === "super_admin") {
+    next();
+  } else {
+    res.status(403).json({
+      success: false,
+      message: "Access denied. Super admin only.",
+    });
+  }
+};
+
+const admin = (req, res, next) => {
+  if (req.user && ["admin", "super_admin"].includes(req.user.role)) {
+    next();
+  } else {
+    res.status(403).json({
+      success: false,
+      message: "Access denied. Admin only.",
+    });
+  }
+};
+
 module.exports = {
   protect,
-  authorize
+  authorize,
+  protect,
+  admin,
+  superAdminOnly,
 };

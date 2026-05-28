@@ -11,9 +11,15 @@ const brandRoutes = require("./routes/brandRoutes");
 const stockRoutes = require("./routes/stockRoutes");
 const warehouseRoutes = require("./routes/warehouseRoutes");
 const transferRoutes = require("./routes/transferRoutes");
+const superAdminRoutes = require("./routes/superAdminRoutes");
+const userRoutes = require("./routes/userRoutes");
+const supplierRoutes = require("./routes/supplierRoutes");
+const purchaseOrderRoutes = require("./routes/purchaseOrderRoutes");
+const grnRoutes = require("./routes/grnRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
+
 
 app.use(
   cors({
@@ -44,6 +50,11 @@ app.use("/api/brands", brandRoutes);
 app.use("/api/stock", stockRoutes);
 app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/transfers", transferRoutes);
+app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/purchases/suppliers", supplierRoutes);
+app.use("/api/purchases/orders", purchaseOrderRoutes);
+app.use("/api/purchases/grn", grnRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "seed:superadmin": "node seeders/createSuperAdmin.js",
     "dev": "nodemon server.js",
     "start": "node server.js"
   },
