@@ -9,14 +9,21 @@ const {
   getLowStockProducts,
 } = require("../controllers/productController");
 
-const {
-  protect,
-  authorize,
-} = require("../middleware/authMiddleware");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 const upload = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
+
+const setProductFolder = (req, res, next) => {
+  req.folder = "products";
+  next();
+};
+
+const productUpload = upload.fields([
+  { name: "thumbnail", maxCount: 1 },
+  { name: "images", maxCount: 5 },
+]);
 
 router.get("/", protect, getProducts);
 
@@ -24,11 +31,8 @@ router.post(
   "/",
   protect,
   authorize("admin", "manager"),
-  (req, res, next) => {
-    req.folder = "products";
-    next();
-  },
-  upload.single("image"),
+  setProductFolder,
+  productUpload,
   createProduct
 );
 
@@ -40,15 +44,11 @@ router.put(
   "/:id",
   protect,
   authorize("admin", "manager"),
-  upload.single("image"),
+  setProductFolder,
+  productUpload,
   updateProduct
 );
 
-router.delete(
-  "/:id",
-  protect,
-  authorize("admin"),
-  deleteProduct
-);
+router.delete("/:id", protect, authorize("admin"), deleteProduct);
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const express = require("express");
+
 const {
   createReturn,
   getReturns,
@@ -11,10 +12,34 @@ const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+/*
+  Generic Inventory:
+  /api/returns = Stock Returns
+*/
+
 router.get("/", protect, getReturns);
-router.post("/", protect, authorize("admin", "manager", "staff"), createReturn);
+
+router.post(
+  "/",
+  protect,
+  authorize("admin", "manager", "staff"),
+  createReturn
+);
+
 router.get("/:id", protect, getReturnById);
-router.put("/:id/status", protect, authorize("admin", "manager"), updateReturnStatus);
-router.delete("/:id", protect, authorize("admin"), deleteReturn);
+
+router.put(
+  "/:id/status",
+  protect,
+  authorize("admin", "manager"),
+  updateReturnStatus
+);
+
+router.delete(
+  "/:id",
+  protect,
+  authorize("admin"),
+  deleteReturn
+);
 
 module.exports = router;

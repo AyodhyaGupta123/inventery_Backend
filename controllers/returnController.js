@@ -1,40 +1,148 @@
 const asyncHandler = require("express-async-handler");
 const Return = require("../models/Return");
 const Order = require("../models/Order");
+const Product = require("../models/Product");
+
+const generateReturnNumber = () => {
+  return `RET-${Date.now()}`;
+};
+
+const isStockIncreaseStatus = (status) => {
+  return ["received", "completed"].includes(String(status || "").toLowerCase());
+};
 
 const createReturn = asyncHandler(async (req, res) => {
-  const { order, reason, notes } = req.body;
+  const {
+    issueOrder,
+    warehouse,
+    department,
+    returnDate,
+    items,
+    reason,
+    status,
+    returnedBy,
+    receivedBy,
+    notes,
+  } = req.body;
 
-  if (!order || !reason) {
+  if (!issueOrder) {
     res.status(400);
-    throw new Error("Order and reason are required");
+    throw new Error("Issue order is required");
   }
 
-  const existingOrder = await Order.findById(order);
+  if (!warehouse) {
+    res.status(400);
+    throw new Error("Warehouse is required");
+  }
+
+  if (!department) {
+    res.status(400);
+    throw new Error("Department or client name is required");
+  }
+
+  if (!reason) {
+    res.status(400);
+    throw new Error("Return reason is required");
+  }
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    res.status(400);
+    throw new Error("Return items are required");
+  }
+
+  const existingOrder = await Order.findById(issueOrder);
 
   if (!existingOrder) {
     res.status(404);
-    throw new Error("Order not found");
+    throw new Error("Issue order not found");
   }
 
-  const returnRequest = await Return.create({
-    returnNumber: `RET-${Date.now()}`,
-    order,
+  const finalStatus = status || "requested";
+  const returnItems = [];
+
+  for (const item of items) {
+    const product = await Product.findById(item.product);
+
+    if (!product) {
+      res.status(404);
+      throw new Error("Product not found");
+    }
+
+    const quantity = Number(item.quantity || 0);
+
+    if (quantity <= 0) {
+      res.status(400);
+      throw new Error("Return quantity must be greater than zero");
+    }
+
+    returnItems.push({
+      product: product._id,
+      productName: product.name,
+      sku: product.sku || "",
+      unit: product.unit || "pcs",
+      quantity,
+    });
+  }
+
+  const totalQuantity = returnItems.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0
+  );
+
+  const stockReturn = await Return.create({
+    returnNumber: generateReturnNumber(),
+    issueOrder,
+    warehouse,
+    department,
+    returnDate: returnDate || Date.now(),
+    items: returnItems,
+    totalQuantity,
     reason,
+    status: finalStatus,
+    returnedBy,
+    receivedBy,
     notes,
     createdBy: req.user?._id,
   });
 
+  if (isStockIncreaseStatus(finalStatus)) {
+    for (const item of returnItems) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { currentStock: Number(item.quantity || 0) },
+      });
+    }
+  }
+
   res.status(201).json({
     success: true,
-    message: "Return request created successfully",
-    return: returnRequest,
+    message: "Stock return created successfully",
+    return: stockReturn,
   });
 });
 
 const getReturns = asyncHandler(async (req, res) => {
-  const returns = await Return.find()
-    .populate("order", "orderNumber customerName grandTotal orderStatus")
+  const { search, status, warehouse } = req.query;
+
+  const query = {};
+
+  if (status) query.status = status;
+  if (warehouse) query.warehouse = warehouse;
+
+  if (search) {
+    query.$or = [
+      { returnNumber: { $regex: search, $options: "i" } },
+      { department: { $regex: search, $options: "i" } },
+      { reason: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const returns = await Return.find(query)
+    .populate("issueOrder", "orderNumber department status")
+    .populate("warehouse", "name warehouseName")
+    .populate("items.product", "name sku unit currentStock")
+    .populate("returnedBy", "name email")
+    .populate("receivedBy", "name email")
+    .populate("createdBy", "name email")
     .sort({ createdAt: -1 });
 
   res.json({
@@ -45,11 +153,17 @@ const getReturns = asyncHandler(async (req, res) => {
 });
 
 const getReturnById = asyncHandler(async (req, res) => {
-  const returnRequest = await Return.findById(req.params.id).populate("order");
+  const returnRequest = await Return.findById(req.params.id)
+    .populate("issueOrder", "orderNumber department status warehouse")
+    .populate("warehouse", "name warehouseName")
+    .populate("items.product", "name sku unit currentStock")
+    .populate("returnedBy", "name email")
+    .populate("receivedBy", "name email")
+    .populate("createdBy", "name email");
 
   if (!returnRequest) {
     res.status(404);
-    throw new Error("Return not found");
+    throw new Error("Stock return not found");
   }
 
   res.json({
@@ -59,23 +173,38 @@ const getReturnById = asyncHandler(async (req, res) => {
 });
 
 const updateReturnStatus = asyncHandler(async (req, res) => {
-  const { status, notes } = req.body;
+  const { status, notes, receivedBy } = req.body;
 
   const returnRequest = await Return.findById(req.params.id);
 
   if (!returnRequest) {
     res.status(404);
-    throw new Error("Return not found");
+    throw new Error("Stock return not found");
+  }
+
+  const oldStatus = returnRequest.status;
+  const newStatus = status || oldStatus;
+
+  const wasNotReceived = !isStockIncreaseStatus(oldStatus);
+  const nowReceived = isStockIncreaseStatus(newStatus);
+
+  if (wasNotReceived && nowReceived) {
+    for (const item of returnRequest.items) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { currentStock: Number(item.quantity || 0) },
+      });
+    }
   }
 
   if (status) returnRequest.status = status;
   if (notes !== undefined) returnRequest.notes = notes;
+  if (receivedBy) returnRequest.receivedBy = receivedBy;
 
   await returnRequest.save();
 
   res.json({
     success: true,
-    message: "Return status updated successfully",
+    message: "Stock return status updated successfully",
     return: returnRequest,
   });
 });
@@ -85,14 +214,19 @@ const deleteReturn = asyncHandler(async (req, res) => {
 
   if (!returnRequest) {
     res.status(404);
-    throw new Error("Return not found");
+    throw new Error("Stock return not found");
+  }
+
+  if (isStockIncreaseStatus(returnRequest.status)) {
+    res.status(400);
+    throw new Error("Received or completed stock return cannot be deleted");
   }
 
   await returnRequest.deleteOne();
 
   res.json({
     success: true,
-    message: "Return deleted successfully",
+    message: "Stock return deleted successfully",
   });
 });
 

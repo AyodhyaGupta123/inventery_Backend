@@ -16,6 +16,11 @@ const userRoutes = require("./routes/userRoutes");
 const supplierRoutes = require("./routes/supplierRoutes");
 const purchaseOrderRoutes = require("./routes/purchaseOrderRoutes");
 const grnRoutes = require("./routes/grnRoutes");
+const analyticsRoutes = require("./routes/analyticsRoutes");
+const unitRoutes = require("./routes/unitRoutes");
+const taxRoutes = require("./routes/taxRoutes");
+const subCategoryRoutes = require("./routes/subCategoryRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
@@ -55,6 +60,11 @@ app.use("/api/users", userRoutes);
 app.use("/api/purchases/suppliers", supplierRoutes);
 app.use("/api/purchases/orders", purchaseOrderRoutes);
 app.use("/api/purchases/grn", grnRoutes);
+app.use("/api/dashboard/analytics", analyticsRoutes);
+app.use("/api/units", unitRoutes);
+app.use("/api/taxes", taxRoutes);
+app.use("/api/subcategories", subCategoryRoutes);
+app.use("/api/reports", reportRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

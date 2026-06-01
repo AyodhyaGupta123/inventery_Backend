@@ -3,35 +3,43 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 
 const generateOrderNumber = () => {
-  return `ORD-${Date.now()}`;
+  return `IO-${Date.now()}`;
+};
+
+const isIssuedStatus = (status) => {
+  return ["issued", "completed"].includes(String(status || "").toLowerCase());
 };
 
 const createOrder = asyncHandler(async (req, res) => {
   const {
-    customerName,
-    customerPhone,
-    customerEmail,
+    department,
+    warehouse,
+    issueDate,
     items,
-    discount,
-    tax,
-    shippingCharge,
-    paymentMethod,
-    paymentStatus,
-    orderStatus,
+    purpose,
+    status,
+    requestedBy,
+    issuedBy,
     notes,
   } = req.body;
 
-  if (!customerName) {
+  if (!department) {
     res.status(400);
-    throw new Error("Customer name is required");
+    throw new Error("Department or client name is required");
+  }
+
+  if (!warehouse) {
+    res.status(400);
+    throw new Error("Warehouse is required");
   }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     res.status(400);
-    throw new Error("Order items are required");
+    throw new Error("Issue order items are required");
   }
 
-  const orderItems = [];
+  const finalStatus = status || "pending";
+  const issueItems = [];
 
   for (const item of items) {
     const product = await Product.findById(item.product);
@@ -48,76 +56,74 @@ const createOrder = asyncHandler(async (req, res) => {
       throw new Error("Quantity must be greater than zero");
     }
 
-    if (Number(product.currentStock || 0) < quantity) {
-      res.status(400);
-      throw new Error(`Insufficient stock for ${product.name}`);
+    if (isIssuedStatus(finalStatus)) {
+      if (Number(product.currentStock || 0) < quantity) {
+        res.status(400);
+        throw new Error(`Insufficient stock for ${product.name}`);
+      }
+
+      product.currentStock = Number(product.currentStock || 0) - quantity;
+      await product.save();
     }
 
-    const price = Number(item.price || product.sellingPrice || 0);
-    const total = quantity * price;
-
-    product.currentStock = Number(product.currentStock || 0) - quantity;
-    await product.save();
-
-    orderItems.push({
+    issueItems.push({
       product: product._id,
       productName: product.name,
-      sku: product.sku,
+      sku: product.sku || "",
+      unit: product.unit || "pcs",
       quantity,
-      price,
-      total,
     });
   }
 
-  const subTotal = orderItems.reduce((sum, item) => sum + item.total, 0);
-  const finalDiscount = Number(discount || 0);
-  const finalTax = Number(tax || 0);
-  const finalShipping = Number(shippingCharge || 0);
-  const grandTotal = subTotal - finalDiscount + finalTax + finalShipping;
+  const totalQuantity = issueItems.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0
+  );
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
-    customerName,
-    customerPhone,
-    customerEmail,
-    items: orderItems,
-    subTotal,
-    discount: finalDiscount,
-    tax: finalTax,
-    shippingCharge: finalShipping,
-    grandTotal,
-    paymentMethod,
-    paymentStatus,
-    orderStatus,
+    department,
+    warehouse,
+    issueDate: issueDate || Date.now(),
+    items: issueItems,
+    totalQuantity,
+    purpose,
+    status: finalStatus,
+    requestedBy,
+    issuedBy,
     notes,
     createdBy: req.user?._id,
   });
 
   res.status(201).json({
     success: true,
-    message: "Order created successfully",
+    message: "Issue order created successfully",
     order,
   });
 });
 
 const getOrders = asyncHandler(async (req, res) => {
-  const { search, orderStatus, paymentStatus } = req.query;
+  const { search, status, warehouse } = req.query;
 
   const query = {};
 
-  if (orderStatus) query.orderStatus = orderStatus;
-  if (paymentStatus) query.paymentStatus = paymentStatus;
+  if (status) query.status = status;
+  if (warehouse) query.warehouse = warehouse;
 
   if (search) {
     query.$or = [
       { orderNumber: { $regex: search, $options: "i" } },
-      { customerName: { $regex: search, $options: "i" } },
-      { customerPhone: { $regex: search, $options: "i" } },
+      { department: { $regex: search, $options: "i" } },
+      { purpose: { $regex: search, $options: "i" } },
     ];
   }
 
   const orders = await Order.find(query)
-    .populate("items.product", "name sku image sellingPrice currentStock")
+    .populate("warehouse", "name warehouseName")
+    .populate("items.product", "name sku unit currentStock")
+    .populate("requestedBy", "name email")
+    .populate("issuedBy", "name email")
+    .populate("createdBy", "name email")
     .sort({ createdAt: -1 });
 
   res.status(200).json({
@@ -128,14 +134,16 @@ const getOrders = asyncHandler(async (req, res) => {
 });
 
 const getOrderById = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id).populate(
-    "items.product",
-    "name sku image sellingPrice currentStock"
-  );
+  const order = await Order.findById(req.params.id)
+    .populate("warehouse", "name warehouseName")
+    .populate("items.product", "name sku unit currentStock")
+    .populate("requestedBy", "name email")
+    .populate("issuedBy", "name email")
+    .populate("createdBy", "name email");
 
   if (!order) {
     res.status(404);
-    throw new Error("Order not found");
+    throw new Error("Issue order not found");
   }
 
   res.status(200).json({
@@ -145,24 +153,51 @@ const getOrderById = asyncHandler(async (req, res) => {
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { orderStatus, paymentStatus, notes } = req.body;
+  const { status, notes, issuedBy } = req.body;
 
   const order = await Order.findById(req.params.id);
 
   if (!order) {
     res.status(404);
-    throw new Error("Order not found");
+    throw new Error("Issue order not found");
   }
 
-  if (orderStatus) order.orderStatus = orderStatus;
-  if (paymentStatus) order.paymentStatus = paymentStatus;
+  const oldStatus = order.status;
+  const newStatus = status || oldStatus;
+
+  const wasNotIssued = !isIssuedStatus(oldStatus);
+  const nowIssued = isIssuedStatus(newStatus);
+
+  if (wasNotIssued && nowIssued) {
+    for (const item of order.items) {
+      const product = await Product.findById(item.product);
+
+      if (!product) {
+        res.status(404);
+        throw new Error("Product not found");
+      }
+
+      if (Number(product.currentStock || 0) < Number(item.quantity || 0)) {
+        res.status(400);
+        throw new Error(`Insufficient stock for ${product.name}`);
+      }
+
+      product.currentStock =
+        Number(product.currentStock || 0) - Number(item.quantity || 0);
+
+      await product.save();
+    }
+  }
+
+  if (status) order.status = status;
   if (notes !== undefined) order.notes = notes;
+  if (issuedBy) order.issuedBy = issuedBy;
 
   const updatedOrder = await order.save();
 
   res.status(200).json({
     success: true,
-    message: "Order updated successfully",
+    message: "Issue order updated successfully",
     order: updatedOrder,
   });
 });
@@ -172,14 +207,19 @@ const deleteOrder = asyncHandler(async (req, res) => {
 
   if (!order) {
     res.status(404);
-    throw new Error("Order not found");
+    throw new Error("Issue order not found");
+  }
+
+  if (isIssuedStatus(order.status)) {
+    res.status(400);
+    throw new Error("Issued or completed order cannot be deleted");
   }
 
   await order.deleteOne();
 
   res.status(200).json({
     success: true,
-    message: "Order deleted successfully",
+    message: "Issue order deleted successfully",
   });
 });
 

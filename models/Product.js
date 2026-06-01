@@ -7,63 +7,327 @@ const productSchema = new mongoose.Schema(
       required: [true, "Product name is required"],
       trim: true,
     },
+
+    shortName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    productType: {
+      type: String,
+      enum: ["Simple Product", "Variant Product", "Bundle/Combo", "Service"],
+      default: "Simple Product",
+    },
+
+    category: {
+      type: String,
+      required: [true, "Product category is required"],
+      default: "",
+    },
+
+    subCategory: {
+      type: String,
+      default: "",
+    },
+
+    brand: {
+      type: String,
+      default: "",
+    },
+
     sku: {
       type: String,
       required: [true, "SKU is required"],
       unique: true,
       trim: true,
     },
-    category: {
+
+    barcode: {
       type: String,
       default: "",
     },
-    brand: {
+
+    hsnSacCode: {
       type: String,
       default: "",
     },
-    unit: {
+
+    internalProductCode: {
       type: String,
-      default: "pcs",
+      default: "",
     },
+
     purchasePrice: {
       type: Number,
       default: 0,
     },
+
     sellingPrice: {
+      type: Number,
+      required: [true, "Selling price is required"],
+      default: 0,
+    },
+
+    mrp: {
       type: Number,
       default: 0,
     },
+
+    wholesalePrice: {
+      type: Number,
+      default: 0,
+    },
+
+    distributorPrice: {
+      type: Number,
+      default: 0,
+    },
+
+    tax: {
+      type: Number,
+      default: 0,
+    },
+
+    discountType: {
+      type: String,
+      enum: ["Flat", "Percentage"],
+      default: "Flat",
+    },
+
+    discountValue: {
+      type: Number,
+      default: 0,
+    },
+
     openingStock: {
       type: Number,
       default: 0,
     },
+
     currentStock: {
       type: Number,
       default: 0,
     },
+
     minStockLevel: {
       type: Number,
-      default: 5,
+      default: 0,
     },
-    description: {
+
+    reorderQuantity: {
+      type: Number,
+      default: 0,
+    },
+
+    maximumStock: {
+      type: Number,
+      default: 0,
+    },
+
+    warehouseLocation: {
       type: String,
       default: "",
     },
-    image: {
+
+    enableStockTracking: {
+      type: Boolean,
+      default: true,
+    },
+
+    allowNegativeStock: {
+      type: Boolean,
+      default: false,
+    },
+
+    trackBatchNumber: {
+      type: Boolean,
+      default: true,
+    },
+
+    trackSerialNumber: {
+      type: Boolean,
+      default: false,
+    },
+
+    enableVariants: {
+      type: Boolean,
+      default: false,
+    },
+
+    primaryUnit: {
+      type: String,
+      default: "Piece",
+    },
+
+    unitConversions: {
+      type: Array,
+      default: [],
+    },
+
+    variantTypes: {
+      type: Array,
+      default: [],
+    },
+
+    variantCombinations: {
+      type: Array,
+      default: [],
+    },
+
+    enableExpiryTracking: {
+      type: Boolean,
+      default: false,
+    },
+
+    batches: {
+      type: Array,
+      default: [],
+    },
+
+    suppliers: {
+      type: Array,
+      default: [],
+    },
+
+    productDescription: {
       type: String,
       default: "",
     },
+
+    seoTitle: {
+      type: String,
+      default: "",
+    },
+
+    seoKeywords: {
+      type: String,
+      default: "",
+    },
+
+    metaDescription: {
+      type: String,
+      default: "",
+    },
+
+    slugUrl: {
+      type: String,
+      default: "",
+    },
+
+    weight: {
+      type: Number,
+      default: 0,
+    },
+
+    length: {
+      type: Number,
+      default: 0,
+    },
+
+    width: {
+      type: Number,
+      default: 0,
+    },
+
+    height: {
+      type: Number,
+      default: 0,
+    },
+
+    published: {
+      type: Boolean,
+      default: true,
+    },
+
+    featuredProduct: {
+      type: Boolean,
+      default: false,
+    },
+
+    onlineOnly: {
+      type: Boolean,
+      default: false,
+    },
+
+    returnable: {
+      type: Boolean,
+      default: false,
+    },
+
+    fragile: {
+      type: Boolean,
+      default: false,
+    },
+
+    codAvailable: {
+      type: Boolean,
+      default: false,
+    },
+
+    subscriptionProduct: {
+      type: Boolean,
+      default: false,
+    },
+
+    perishable: {
+      type: Boolean,
+      default: false,
+    },
+
+    requiresShipping: {
+      type: Boolean,
+      default: false,
+    },
+
+    fastMoving: {
+      type: Boolean,
+      default: false,
+    },
+
+    seasonal: {
+      type: Boolean,
+      default: false,
+    },
+
+    highMargin: {
+      type: Boolean,
+      default: false,
+    },
+
+    bestseller: {
+      type: Boolean,
+      default: false,
+    },
+
+    thumbnail: {
+      type: String,
+      default: "",
+    },
+
+    images: {
+      type: [String],
+      default: [],
+    },
+
     status: {
       type: String,
-      enum: ["active", "inactive"],
+      enum: ["active", "inactive", "draft"],
       default: "active",
     },
+
+    visibility: {
+      type: String,
+      enum: ["Visible Everywhere", "Online Only", "POS Only", "Hidden"],
+      default: "Visible Everywhere",
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Product", productSchema);

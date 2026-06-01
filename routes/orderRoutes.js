@@ -12,6 +12,11 @@ const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+/*
+  Generic Inventory:
+  /api/orders = Issue Orders
+*/
+
 router.get("/", protect, getOrders);
 
 router.post(

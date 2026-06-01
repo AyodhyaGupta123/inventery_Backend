@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const orderItemSchema = new mongoose.Schema(
+const issueOrderItemSchema = new mongoose.Schema(
   {
     product: {
       type: mongoose.Schema.Types.ObjectId,
@@ -20,28 +20,22 @@ const orderItemSchema = new mongoose.Schema(
       trim: true,
     },
 
+    unit: {
+      type: String,
+      default: "pcs",
+      trim: true,
+    },
+
     quantity: {
       type: Number,
       required: true,
       min: 1,
     },
-
-    price: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-
-    total: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
   },
   { _id: false }
 );
 
-const orderSchema = new mongoose.Schema(
+const issueOrderSchema = new mongoose.Schema(
   {
     orderNumber: {
       type: String,
@@ -50,94 +44,60 @@ const orderSchema = new mongoose.Schema(
       trim: true,
     },
 
-    customerName: {
+    department: {
       type: String,
-      required: [true, "Customer name is required"],
+      required: [true, "Department or client name is required"],
       trim: true,
     },
 
-    customerPhone: {
-      type: String,
-      default: "",
-      trim: true,
+    warehouse: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+      required: true,
     },
 
-    customerEmail: {
-      type: String,
-      default: "",
-      trim: true,
-      lowercase: true,
-    },
-
-    orderDate: {
+    issueDate: {
       type: Date,
       default: Date.now,
     },
 
     items: {
-      type: [orderItemSchema],
+      type: [issueOrderItemSchema],
       required: true,
       validate: {
         validator: function (items) {
           return items.length > 0;
         },
-        message: "At least one order item is required",
+        message: "At least one issue item is required",
       },
     },
 
-    subTotal: {
+    totalQuantity: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-    discount: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    tax: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    shippingCharge: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    grandTotal: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    paymentMethod: {
+    purpose: {
       type: String,
-      enum: ["cash", "upi", "card", "bank", "cod", "other"],
-      default: "cash",
+      default: "",
+      trim: true,
     },
 
-    paymentStatus: {
+    status: {
       type: String,
-      enum: ["pending", "paid", "failed", "refunded"],
+      enum: ["draft", "pending", "approved", "issued", "completed", "cancelled"],
       default: "pending",
     },
 
-    orderStatus: {
-      type: String,
-      enum: [
-        "pending",
-        "confirmed",
-        "packed",
-        "shipped",
-        "delivered",
-        "cancelled",
-      ],
-      default: "pending",
+    requestedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    issuedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
 
     notes: {
@@ -154,4 +114,4 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Order", orderSchema);
+module.exports = mongoose.model("Order", issueOrderSchema);

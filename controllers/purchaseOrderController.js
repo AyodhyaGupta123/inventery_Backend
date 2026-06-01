@@ -51,13 +51,21 @@ const createPurchaseOrder = async (req, res) => {
 const getPurchaseOrders = async (req, res) => {
   try {
     const purchaseOrders = await PurchaseOrder.find()
-      .populate("supplier")
+      .populate(
+        "supplier",
+        "name email phone company gst city address"
+      )
+      .populate(
+        "items.product",
+        "name sku unit rate price sellingPrice currentStock"
+      )
       .sort({
         createdAt: -1,
       });
 
     res.json({
       success: true,
+      count: purchaseOrders.length,
       purchaseOrders,
     });
   } catch (error) {
@@ -67,12 +75,11 @@ const getPurchaseOrders = async (req, res) => {
     });
   }
 };
-
 const getPurchaseOrderById = async (req, res) => {
   try {
-    const purchaseOrder = await PurchaseOrder.findById(
-      req.params.id
-    ).populate("supplier");
+    const purchaseOrder = await PurchaseOrder.findById(req.params.id)
+      .populate("supplier", "name email phone company gst city address")
+      .populate("items.product", "name sku unit rate price sellingPrice currentStock");
 
     if (!purchaseOrder) {
       return res.status(404).json({
