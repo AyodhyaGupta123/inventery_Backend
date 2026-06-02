@@ -1,232 +1,316 @@
 const asyncHandler = require("express-async-handler");
+const responseHandler = require("../utils/responseHandler");
+const orderValidator = require("../validators/orderValidator");
+const commonValidator = require("../validators/commonValidator");
+const orderService = require("../services/orderService");
 const Order = require("../models/Order");
-const Product = require("../models/Product");
 
-const generateOrderNumber = () => {
-  return `IO-${Date.now()}`;
-};
-
-const isIssuedStatus = (status) => {
-  return ["issued", "completed"].includes(String(status || "").toLowerCase());
-};
-
+/**
+ * Create a new sales order
+ * POST /api/orders
+ */
 const createOrder = asyncHandler(async (req, res) => {
-  const {
-    department,
-    warehouse,
-    issueDate,
-    items,
-    purpose,
-    status,
-    requestedBy,
-    issuedBy,
-    notes,
-  } = req.body;
-
-  if (!department) {
-    res.status(400);
-    throw new Error("Department or client name is required");
+  // Validate request
+  const validation = orderValidator.validateCreate(req.body);
+  if (!validation.isValid) {
+    return responseHandler.validationError(res, validation.errors, "Validation failed");
   }
 
-  if (!warehouse) {
-    res.status(400);
-    throw new Error("Warehouse is required");
-  }
-
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    res.status(400);
-    throw new Error("Issue order items are required");
-  }
-
-  const finalStatus = status || "pending";
-  const issueItems = [];
-
-  for (const item of items) {
-    const product = await Product.findById(item.product);
-
-    if (!product) {
-      res.status(404);
-      throw new Error("Product not found");
-    }
-
-    const quantity = Number(item.quantity || 0);
-
-    if (quantity <= 0) {
-      res.status(400);
-      throw new Error("Quantity must be greater than zero");
-    }
-
-    if (isIssuedStatus(finalStatus)) {
-      if (Number(product.currentStock || 0) < quantity) {
-        res.status(400);
-        throw new Error(`Insufficient stock for ${product.name}`);
-      }
-
-      product.currentStock = Number(product.currentStock || 0) - quantity;
-      await product.save();
-    }
-
-    issueItems.push({
-      product: product._id,
-      productName: product.name,
-      sku: product.sku || "",
-      unit: product.unit || "pcs",
-      quantity,
+  try {
+    // Create order using service
+    const order = await orderService.createSalesOrder({
+      ...req.body,
+      createdBy: req.user._id,
     });
+
+    // Populate order details
+    const populatedOrder = await Order.findById(order._id)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email");
+
+    return responseHandler.success(
+      res,
+      populatedOrder,
+      "Sales order created successfully",
+      201
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 400);
   }
-
-  const totalQuantity = issueItems.reduce(
-    (sum, item) => sum + Number(item.quantity || 0),
-    0
-  );
-
-  const order = await Order.create({
-    orderNumber: generateOrderNumber(),
-    department,
-    warehouse,
-    issueDate: issueDate || Date.now(),
-    items: issueItems,
-    totalQuantity,
-    purpose,
-    status: finalStatus,
-    requestedBy,
-    issuedBy,
-    notes,
-    createdBy: req.user?._id,
-  });
-
-  res.status(201).json({
-    success: true,
-    message: "Issue order created successfully",
-    order,
-  });
 });
 
+/**
+ * Get all orders with pagination and filtering
+ * GET /api/orders?page=1&limit=20&status=pending&warehouseId=xxx
+ */
 const getOrders = asyncHandler(async (req, res) => {
-  const { search, status, warehouse } = req.query;
+  // Validate pagination
+  const paginationValidation = commonValidator.validatePagination(req.query);
+  if (!paginationValidation.isValid) {
+    return responseHandler.validationError(res, paginationValidation.errors);
+  }
 
-  const query = {};
+  const { page, limit } = paginationValidation;
+  const { status, warehouseId, search } = req.query;
 
-  if (status) query.status = status;
-  if (warehouse) query.warehouse = warehouse;
-
+  // Build query filters
+  const filters = {};
+  if (status) filters.status = status;
+  if (warehouseId) filters.warehouse = warehouseId;
   if (search) {
-    query.$or = [
+    filters.$or = [
       { orderNumber: { $regex: search, $options: "i" } },
-      { department: { $regex: search, $options: "i" } },
-      { purpose: { $regex: search, $options: "i" } },
+      { customerName: { $regex: search, $options: "i" } },
     ];
   }
 
-  const orders = await Order.find(query)
-    .populate("warehouse", "name warehouseName")
-    .populate("items.product", "name sku unit currentStock")
-    .populate("requestedBy", "name email")
-    .populate("issuedBy", "name email")
-    .populate("createdBy", "name email")
-    .sort({ createdAt: -1 });
+  try {
+    const skip = (page - 1) * limit;
 
-  res.status(200).json({
-    success: true,
-    count: orders.length,
-    orders,
-  });
+    // Get total count
+    const total = await Order.countDocuments(filters);
+
+    // Get paginated orders
+    const orders = await Order.find(filters)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    return responseHandler.paginated(
+      res,
+      orders,
+      page,
+      limit,
+      total,
+      "Orders retrieved successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
 });
 
+/**
+ * Get order by ID
+ * GET /api/orders/:id
+ */
 const getOrderById = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id)
-    .populate("warehouse", "name warehouseName")
-    .populate("items.product", "name sku unit currentStock")
-    .populate("requestedBy", "name email")
-    .populate("issuedBy", "name email")
-    .populate("createdBy", "name email");
-
-  if (!order) {
-    res.status(404);
-    throw new Error("Issue order not found");
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid order ID", 400);
   }
 
-  res.status(200).json({
-    success: true,
-    order,
-  });
-});
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email");
 
-const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { status, notes, issuedBy } = req.body;
-
-  const order = await Order.findById(req.params.id);
-
-  if (!order) {
-    res.status(404);
-    throw new Error("Issue order not found");
-  }
-
-  const oldStatus = order.status;
-  const newStatus = status || oldStatus;
-
-  const wasNotIssued = !isIssuedStatus(oldStatus);
-  const nowIssued = isIssuedStatus(newStatus);
-
-  if (wasNotIssued && nowIssued) {
-    for (const item of order.items) {
-      const product = await Product.findById(item.product);
-
-      if (!product) {
-        res.status(404);
-        throw new Error("Product not found");
-      }
-
-      if (Number(product.currentStock || 0) < Number(item.quantity || 0)) {
-        res.status(400);
-        throw new Error(`Insufficient stock for ${product.name}`);
-      }
-
-      product.currentStock =
-        Number(product.currentStock || 0) - Number(item.quantity || 0);
-
-      await product.save();
+    if (!order) {
+      return responseHandler.error(res, "Order not found", 404);
     }
+
+    return responseHandler.success(res, order, "Order retrieved successfully", 200);
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
   }
-
-  if (status) order.status = status;
-  if (notes !== undefined) order.notes = notes;
-  if (issuedBy) order.issuedBy = issuedBy;
-
-  const updatedOrder = await order.save();
-
-  res.status(200).json({
-    success: true,
-    message: "Issue order updated successfully",
-    order: updatedOrder,
-  });
 });
 
+/**
+ * Confirm a pending order
+ * PUT /api/orders/:id/confirm
+ */
+const confirmOrder = asyncHandler(async (req, res) => {
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid order ID", 400);
+  }
+
+  try {
+    const order = await orderService.confirmOrder(req.params.id, req.user._id);
+
+    const populatedOrder = await Order.findById(order._id)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email");
+
+    return responseHandler.success(
+      res,
+      populatedOrder,
+      "Order confirmed successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 400);
+  }
+});
+
+/**
+ * Fulfill/issue an order (deduct stock)
+ * PUT /api/orders/:id/fulfill
+ */
+const fulfillOrder = asyncHandler(async (req, res) => {
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid order ID", 400);
+  }
+
+  try {
+    const order = await orderService.fulfillOrder({
+      orderId: req.params.id,
+      issuedBy: req.user._id,
+    });
+
+    const populatedOrder = await Order.findById(order._id)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email");
+
+    return responseHandler.success(
+      res,
+      populatedOrder,
+      "Order fulfilled and stock deducted successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 400);
+  }
+});
+
+/**
+ * Complete an order
+ * PUT /api/orders/:id/complete
+ */
+const completeOrder = asyncHandler(async (req, res) => {
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid order ID", 400);
+  }
+
+  try {
+    const order = await orderService.completeOrder(req.params.id);
+
+    const populatedOrder = await Order.findById(order._id)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email");
+
+    return responseHandler.success(
+      res,
+      populatedOrder,
+      "Order completed successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 400);
+  }
+});
+
+/**
+ * Cancel an order
+ * PUT /api/orders/:id/cancel
+ */
+const cancelOrder = asyncHandler(async (req, res) => {
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid order ID", 400);
+  }
+
+  try {
+    const order = await orderService.cancelOrder(req.params.id);
+
+    const populatedOrder = await Order.findById(order._id)
+      .populate("warehouse", "name warehouseName")
+      .populate("items.product", "name sku unit currentStock")
+      .populate("createdBy", "name email");
+
+    return responseHandler.success(
+      res,
+      populatedOrder,
+      "Order cancelled successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 400);
+  }
+});
+
+/**
+ * Delete an order
+ * DELETE /api/orders/:id
+ */
 const deleteOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
-
-  if (!order) {
-    res.status(404);
-    throw new Error("Issue order not found");
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid order ID", 400);
   }
 
-  if (isIssuedStatus(order.status)) {
-    res.status(400);
-    throw new Error("Issued or completed order cannot be deleted");
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return responseHandler.error(res, "Order not found", 404);
+    }
+
+    // Only allow deleting draft orders
+    if (order.status !== "draft") {
+      return responseHandler.error(
+        res,
+        "Only draft orders can be deleted",
+        400
+      );
+    }
+
+    await Order.findByIdAndDelete(req.params.id);
+
+    return responseHandler.success(res, null, "Order deleted successfully", 200);
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
+});
+
+/**
+ * Get warehouse order statistics
+ * GET /api/orders/stats/warehouse/:warehouseId
+ */
+const getWarehouseStats = asyncHandler(async (req, res) => {
+  // Validate ID
+  if (!commonValidator.isValidId(req.params.warehouseId)) {
+    return responseHandler.error(res, "Invalid warehouse ID", 400);
   }
 
-  await order.deleteOne();
+  try {
+    const stats = await orderService.getWarehouseOrderStats(
+      req.params.warehouseId,
+      {
+        fromDate: req.query.fromDate,
+        toDate: req.query.toDate,
+      }
+    );
 
-  res.status(200).json({
-    success: true,
-    message: "Issue order deleted successfully",
-  });
+    return responseHandler.success(
+      res,
+      stats,
+      "Warehouse statistics retrieved successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
 });
 
 module.exports = {
   createOrder,
   getOrders,
   getOrderById,
-  updateOrderStatus,
+  confirmOrder,
+  fulfillOrder,
+  completeOrder,
+  cancelOrder,
   deleteOrder,
+  getWarehouseStats,
 };

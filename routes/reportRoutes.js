@@ -2,17 +2,26 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  getReports,
-  createReport,
-  getReportById,
-  updateReport,
-  deleteReport,
+  getStockTransactionReport,
+  getStockTransferReport,
+  getOrderReport,
+  getPurchaseOrderReport,
+  getInventorySnapshot,
 } = require("../controllers/reportController");
 
-router.get("/", getReports);
-router.post("/", createReport);
-router.get("/:id", getReportById);
-router.put("/:id", updateReport);
-router.delete("/:id", deleteReport);
+// Stock transactions report
+router.get("/stock-transactions", getStockTransactionReport);
+
+// Stock transfers report
+router.get("/stock-transfers", getStockTransferReport);
+
+// Orders report (sales & purchase)
+router.get("/orders", getOrderReport);
+
+// Purchase orders report
+router.get("/purchase-orders", getPurchaseOrderReport);
+
+// Inventory snapshot by warehouse
+router.get("/inventory", getInventorySnapshot);
 
 module.exports = router;

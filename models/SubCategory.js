@@ -8,10 +8,16 @@ const subCategorySchema = new mongoose.Schema(
       trim: true,
     },
 
-    category: {
+    categoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      required: [true, "categoryId is required"],
+    },
+
+    categoryName: {
       type: String,
-      required: [true, "Parent category is required"],
       trim: true,
+      default: "",
     },
 
     description: {
@@ -42,7 +48,5 @@ const subCategorySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-subCategorySchema.index({ name: 1, category: 1 }, { unique: true });
 
 module.exports = mongoose.model("SubCategory", subCategorySchema);

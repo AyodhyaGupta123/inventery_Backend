@@ -119,6 +119,11 @@ const returnSchema = new mongoose.Schema(
       trim: true,
     },
 
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -126,5 +131,10 @@ const returnSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Index for better query performance
+returnSchema.index({ issueOrder: 1, status: 1 });
+returnSchema.index({ warehouse: 1 });
+returnSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Return", returnSchema);

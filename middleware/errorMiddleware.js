@@ -7,6 +7,7 @@ const notFound = (req, res, next) => {
 const errorHandler = (err, req, res, next) => {
   let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   let message = err.message || "Server Error";
+  let errors = null;
 
   if (err.name === "CastError") {
     statusCode = 404;
@@ -16,13 +17,17 @@ const errorHandler = (err, req, res, next) => {
   if (err.code === 11000) {
     statusCode = 400;
     message = "Duplicate field value entered";
+    const field = Object.keys(err.keyValue)[0];
+    errors = { [field]: `${field} already exists` };
   }
 
   if (err.name === "ValidationError") {
     statusCode = 400;
-    message = Object.values(err.errors)
-      .map((item) => item.message)
-      .join(", ");
+    message = "Validation failed";
+    errors = {};
+    Object.values(err.errors).forEach((item) => {
+      errors[item.path] = item.message;
+    });
   }
 
   if (err.name === "JsonWebTokenError") {
@@ -37,7 +42,9 @@ const errorHandler = (err, req, res, next) => {
 
   res.status(statusCode).json({
     success: false,
-    message
+    message,
+    ...(errors && { errors }),
+    timestamp: new Date().toISOString(),
   });
 };
 

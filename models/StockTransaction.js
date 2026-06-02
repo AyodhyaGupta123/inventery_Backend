@@ -14,6 +14,12 @@ const stockTransactionSchema = new mongoose.Schema(
       required: true,
     },
 
+    warehouse: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+      default: null,
+    },
+
     quantity: {
       type: Number,
       required: true,
@@ -42,6 +48,17 @@ const stockTransactionSchema = new mongoose.Schema(
       trim: true,
     },
 
+    referenceDocument: {
+      type: String,
+      enum: ["order", "purchase-order", "grn", "transfer", "manual"],
+      default: "manual",
+    },
+
+    referenceDocumentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
     notes: {
       type: String,
       default: "",
@@ -52,8 +69,14 @@ const stockTransactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+    },
   },
   { timestamps: true }
 );
+
 
 module.exports = mongoose.model("StockTransaction", stockTransactionSchema);

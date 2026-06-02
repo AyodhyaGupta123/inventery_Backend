@@ -1,17 +1,25 @@
 const express = require("express");
+const { protect } = require("../middleware/authMiddleware");
 
 const {
   createSupplier,
   getSuppliers,
   getSupplierById,
+  updateSupplier,
 } = require("../controllers/supplierController");
 
 const router = express.Router();
 
-router.post("/", createSupplier);
+// Create Supplier (Protected)
+router.post("/", protect, createSupplier);
 
-router.get("/", getSuppliers);
+// Get All Suppliers (Protected)
+router.get("/", protect, getSuppliers);
 
-router.get("/:id", getSupplierById);
+// Get Single Supplier (Protected)
+router.get("/:id", protect, getSupplierById);
+
+// Update Supplier (Protected)
+router.put("/:id", protect, updateSupplier);
 
 module.exports = router;

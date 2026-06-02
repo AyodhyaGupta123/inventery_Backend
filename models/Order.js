@@ -44,6 +44,12 @@ const issueOrderSchema = new mongoose.Schema(
       trim: true,
     },
 
+    orderType: {
+      type: String,
+      enum: ["internal-issue", "sales-order"],
+      default: "internal-issue",
+    },
+
     department: {
       type: String,
       required: [true, "Department or client name is required"],
@@ -78,6 +84,12 @@ const issueOrderSchema = new mongoose.Schema(
       min: 0,
     },
 
+    totalAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     purpose: {
       type: String,
       default: "",
@@ -106,6 +118,11 @@ const issueOrderSchema = new mongoose.Schema(
       trim: true,
     },
 
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -113,5 +130,7 @@ const issueOrderSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+
 
 module.exports = mongoose.model("Order", issueOrderSchema);

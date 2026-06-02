@@ -29,7 +29,7 @@ const stockTransferSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "completed", "cancelled"],
+      enum: ["pending", "in-transit", "completed", "cancelled"],
       default: "pending",
     },
     notes: {
@@ -37,12 +37,35 @@ const stockTransferSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    initiatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+    },
+
+    receivedAt: {
+      type: Date,
+      default: null,
+    },
+
+    receivedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+
 
 module.exports = mongoose.model("StockTransfer", stockTransferSchema);

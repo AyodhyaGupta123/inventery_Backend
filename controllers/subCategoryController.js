@@ -1,17 +1,25 @@
 const asyncHandler = require("express-async-handler");
 const SubCategory = require("../models/SubCategory");
+const Category = require("../models/Category");
 
 const createSubCategory = asyncHandler(async (req, res) => {
-  const { name, category, description, displayOrder, notes, status } = req.body;
+  const { name, categoryId, description, displayOrder, notes, status } = req.body;
 
-  if (!name || !category) {
+  if (!name || !categoryId) {
     res.status(400);
     throw new Error("Sub category name and parent category are required");
   }
 
+  const category = await Category.findById(categoryId);
+
+  if (!category) {
+    res.status(404);
+    throw new Error("Parent category not found");
+  }
+
   const exists = await SubCategory.findOne({
     name: name.trim(),
-    category: category.trim(),
+    categoryId,
   });
 
   if (exists) {
@@ -21,7 +29,8 @@ const createSubCategory = asyncHandler(async (req, res) => {
 
   const subCategory = await SubCategory.create({
     name: name.trim(),
-    category: category.trim(),
+    categoryId,
+    categoryName: category.name,
     description: description || "",
     displayOrder: Number(displayOrder || 0),
     notes: notes || "",
@@ -38,25 +47,27 @@ const createSubCategory = asyncHandler(async (req, res) => {
 });
 
 const getSubCategories = asyncHandler(async (req, res) => {
-  const { search, category, status } = req.query;
+  const { search, categoryId, status } = req.query;
 
   const query = {};
 
-  if (category) query.category = category;
+  if (categoryId) query.categoryId = categoryId;
   if (status) query.status = status;
 
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: "i" } },
-      { category: { $regex: search, $options: "i" } },
+      { categoryName: { $regex: search, $options: "i" } },
       { description: { $regex: search, $options: "i" } },
     ];
   }
 
-  const subCategories = await SubCategory.find(query).sort({
-    displayOrder: 1,
-    createdAt: -1,
-  });
+  const subCategories = await SubCategory.find(query)
+    .populate("categoryId", "name status")
+    .sort({
+      displayOrder: 1,
+      createdAt: -1,
+    });
 
   res.status(200).json({
     success: true,
@@ -68,7 +79,10 @@ const getSubCategories = asyncHandler(async (req, res) => {
 });
 
 const getSubCategoryById = asyncHandler(async (req, res) => {
-  const subCategory = await SubCategory.findById(req.params.id);
+  const subCategory = await SubCategory.findById(req.params.id).populate(
+    "categoryId",
+    "name status"
+  );
 
   if (!subCategory) {
     res.status(404);
@@ -90,13 +104,26 @@ const updateSubCategory = asyncHandler(async (req, res) => {
     throw new Error("Sub category not found");
   }
 
-  const { name, category } = req.body;
+  const { name, categoryId } = req.body;
 
-  if (name && category) {
+  let categoryName = subCategory.categoryName;
+
+  if (categoryId) {
+    const category = await Category.findById(categoryId);
+
+    if (!category) {
+      res.status(404);
+      throw new Error("Parent category not found");
+    }
+
+    categoryName = category.name;
+  }
+
+  if (name || categoryId) {
     const exists = await SubCategory.findOne({
       _id: { $ne: req.params.id },
-      name: name.trim(),
-      category: category.trim(),
+      name: (name || subCategory.name).trim(),
+      categoryId: categoryId || subCategory.categoryId,
     });
 
     if (exists) {
@@ -107,10 +134,10 @@ const updateSubCategory = asyncHandler(async (req, res) => {
 
   const payload = {
     ...req.body,
+    categoryName,
   };
 
   if (payload.name) payload.name = payload.name.trim();
-  if (payload.category) payload.category = payload.category.trim();
 
   if (payload.displayOrder !== undefined) {
     payload.displayOrder = Number(payload.displayOrder || 0);

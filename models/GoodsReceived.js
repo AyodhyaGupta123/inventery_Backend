@@ -1,7 +1,44 @@
 const mongoose = require("mongoose");
 
+const goodsReceivedItemSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+
+    orderedQty: {
+      type: Number,
+      default: 0,
+    },
+
+    receivedQty: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+
+    rejectedQty: {
+      type: Number,
+      default: 0,
+    },
+
+    remarks: {
+      type: String,
+      default: "",
+    },
+  },
+  { _id: false }
+);
+
 const goodsReceivedSchema = new mongoose.Schema(
   {
+    grnNumber: {
+      type: String,
+      unique: true,
+    },
+
     purchaseOrder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PurchaseOrder",
@@ -21,10 +58,22 @@ const goodsReceivedSchema = new mongoose.Schema(
 
     receivedBy: {
       type: String,
+      default: "",
+    },
+
+    warehouse: {
+      type: String,
+      default: "",
+    },
+
+    items: {
+      type: [goodsReceivedItemSchema],
+      default: [],
     },
 
     remarks: {
       type: String,
+      default: "",
     },
 
     status: {
@@ -33,12 +82,7 @@ const goodsReceivedSchema = new mongoose.Schema(
       default: "Received",
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "GoodsReceived",
-  goodsReceivedSchema
-);
+module.exports = mongoose.model("GoodsReceived", goodsReceivedSchema);

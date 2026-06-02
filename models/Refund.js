@@ -35,12 +35,29 @@ const refundSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    processedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    processedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
 
 module.exports = mongoose.model("Refund", refundSchema);

@@ -1,26 +1,33 @@
 const mongoose = require("mongoose");
 
-const purchaseItemSchema = new mongoose.Schema({
-  product: {
-    type: String,
-    required: true,
-  },
+const purchaseItemSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
 
-  quantity: {
-    type: Number,
-    required: true,
-  },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
 
-  rate: {
-    type: Number,
-    required: true,
-  },
+    rate: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
 
-  amount: {
-    type: Number,
-    required: true,
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
   },
-});
+  { _id: false }
+);
 
 const purchaseOrderSchema = new mongoose.Schema(
   {
@@ -34,6 +41,7 @@ const purchaseOrderSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      trim: true,
     },
 
     purchaseDate: {
@@ -45,10 +53,17 @@ const purchaseOrderSchema = new mongoose.Schema(
       type: Date,
     },
 
-    items: [purchaseItemSchema],
+    items: {
+      type: [purchaseItemSchema],
+      validate: {
+        validator: (items) => items.length > 0,
+        message: "At least one item is required",
+      },
+    },
 
     notes: {
       type: String,
+      default: "",
     },
 
     subtotal: {
@@ -68,14 +83,44 @@ const purchaseOrderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Pending", "Received", "Cancelled"],
-      default: "Pending",
+      enum: ["draft", "confirmed", "partially-received", "received", "cancelled"],
+      default: "draft",
+    },
+
+    warehouse: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+    },
+
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+    },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    confirmedAt: {
+      type: Date,
+      default: null,
+    },
+
+    receivedAt: {
+      type: Date,
+      default: null,
     },
   },
   {
     timestamps: true,
   }
 );
+
+// Index for better query performance
+purchaseOrderSchema.index({ supplier: 1, status: 1 });
+purchaseOrderSchema.index({ orderNumber: 1 });
+purchaseOrderSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model(
   "PurchaseOrder",

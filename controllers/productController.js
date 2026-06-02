@@ -1,5 +1,9 @@
 const asyncHandler = require("express-async-handler");
 const Product = require("../models/Product");
+const StockTransaction = require("../models/StockTransaction");
+const responseHandler = require("../utils/responseHandler");
+const productValidator = require("../validators/productValidator");
+const common = require("../validators/commonValidator");
 
 const toNumber = (value) => {
   const num = Number(value);
@@ -35,9 +39,7 @@ const getUploadedThumbnail = (req) => {
 const getUploadedImages = (req) => {
   if (!req.files?.images) return [];
 
-  return req.files.images.map(
-    (file) => `/uploads/products/${file.filename}`
-  );
+  return req.files.images.map((file) => `/uploads/products/${file.filename}`);
 };
 
 const buildProductData = (req, isUpdate = false) => {
@@ -48,9 +50,9 @@ const buildProductData = (req, isUpdate = false) => {
     shortName: body.shortName,
     productType: body.productType,
 
-    category: body.category,
-    subCategory: body.subCategory,
-    brand: body.brand,
+    category: body.categoryId || body.category || undefined,
+    subCategory: body.subCategoryId || body.subCategory || null,
+    brand: body.brandId || body.brand || null,
 
     sku: body.sku,
     barcode: body.barcode,
@@ -112,7 +114,7 @@ const buildProductData = (req, isUpdate = false) => {
     highMargin: toBoolean(body.highMargin),
     bestseller: toBoolean(body.bestseller),
 
-    status: body.status,
+    status: body.status || "active",
     visibility: body.visibility,
   };
 
@@ -124,12 +126,21 @@ const buildProductData = (req, isUpdate = false) => {
   const thumbnail = getUploadedThumbnail(req);
   const images = getUploadedImages(req);
 
-  if (thumbnail) productData.thumbnail = thumbnail;
-  if (thumbnail) productData.image = thumbnail;
-  if (images.length) productData.images = images;
+  if (thumbnail) {
+    productData.thumbnail = thumbnail;
+    productData.image = thumbnail;
+  }
+
+  if (images.length) {
+    productData.images = images;
+  }
 
   Object.keys(productData).forEach((key) => {
-    if (productData[key] === undefined) {
+    if (
+      productData[key] === undefined ||
+      productData[key] === null ||
+      productData[key] === ""
+    ) {
       delete productData[key];
     }
   });
@@ -138,101 +149,161 @@ const buildProductData = (req, isUpdate = false) => {
 };
 
 const createProduct = asyncHandler(async (req, res) => {
-  const { name, sku, category, sellingPrice } = req.body;
+  const validation = productValidator.validateCreate(req.body);
 
-  if (!name || !sku) {
-    res.status(400);
-    throw new Error("Product name and SKU are required");
+  if (!validation.isValid) {
+    return responseHandler.validationError(res, validation.errors);
   }
 
-  if (!category) {
-    res.status(400);
-    throw new Error("Product category is required");
-  }
-
-  if (!sellingPrice) {
-    res.status(400);
-    throw new Error("Selling price is required");
-  }
+  const { sku } = req.body;
 
   const exists = await Product.findOne({ sku });
 
   if (exists) {
-    res.status(400);
-    throw new Error("Product with this SKU already exists");
+    return responseHandler.error(
+      res,
+      "Product with this SKU already exists",
+      400,
+    );
   }
 
-  const product = await Product.create(buildProductData(req));
-
-  res.status(201).json({
-    success: true,
-    message: "Product created successfully",
-    product,
+  const product = await Product.create({
+    ...buildProductData(req),
+    createdBy: req.user?._id,
   });
+
+  const openingStock = toNumber(req.body.openingStock);
+
+  if (openingStock > 0) {
+    await StockTransaction.create({
+      type: "stock-in",
+      product: product._id,
+      quantity: openingStock,
+      previousStock: 0,
+      newStock: openingStock,
+      reason: "Opening Stock",
+      referenceNo: `OPENING-${product.sku}`,
+      notes: "Auto generated during product creation",
+      createdBy: req.user?._id,
+    });
+  }
+
+  const populatedProduct = await Product.findById(product._id)
+    .populate("category", "name")
+    .populate("subCategory", "name")
+    .populate("brand", "name");
+
+  responseHandler.success(
+    res,
+    populatedProduct,
+    "Product created successfully",
+    201,
+  );
 });
 
 const getProducts = asyncHandler(async (req, res) => {
-  const { search, status, category, brand } = req.query;
+  const paginationValidation = common.validatePagination(
+    req.query.page,
+    req.query.limit,
+  );
+
+  if (!paginationValidation.isValid) {
+    return responseHandler.validationError(res, paginationValidation.errors);
+  }
+
+  const { page, limit } = paginationValidation;
+  const { search, status, category, categoryId, brand, brandId } = req.query;
 
   const query = {};
 
   if (status) query.status = status;
-  if (category) query.category = category;
-  if (brand) query.brand = brand;
+  if (categoryId || category) query.category = categoryId || category;
+  if (brandId || brand) query.brand = brandId || brand;
 
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: "i" } },
       { sku: { $regex: search, $options: "i" } },
-      { brand: { $regex: search, $options: "i" } },
-      { category: { $regex: search, $options: "i" } },
       { barcode: { $regex: search, $options: "i" } },
+      { productType: { $regex: search, $options: "i" } },
+      { primaryUnit: { $regex: search, $options: "i" } },
     ];
   }
 
-  const products = await Product.find(query).sort({ createdAt: -1 });
+  const skip = (page - 1) * limit;
 
-  res.status(200).json({
-    success: true,
-    count: products.length,
+  const total = await Product.countDocuments(query);
+
+  const products = await Product.find(query)
+    .populate("category", "name")
+    .populate("subCategory", "name")
+    .populate("brand", "name")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  responseHandler.paginated(
+    res,
     products,
-  });
+    page,
+    limit,
+    total,
+    "Products retrieved successfully",
+  );
 });
 
 const getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
-
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  if (!common.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid product ID", 400);
   }
 
-  res.status(200).json({
-    success: true,
-    product,
-  });
+  const product = await Product.findById(req.params.id)
+    .populate("category", "name")
+    .populate("subCategory", "name")
+    .populate("brand", "name");
+
+  if (!product) {
+    return responseHandler.error(res, "Product not found", 404);
+  }
+
+  responseHandler.success(res, product, "Product retrieved successfully");
 });
 
 const updateProduct = asyncHandler(async (req, res) => {
+  if (!common.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid product ID", 400);
+  }
+
   const product = await Product.findById(req.params.id);
 
   if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+    return responseHandler.error(res, "Product not found", 404);
+  }
+
+  const validation = productValidator.validateUpdate(req.body);
+
+  if (!validation.isValid) {
+    return responseHandler.validationError(res, validation.errors);
   }
 
   if (req.body.sku && req.body.sku !== product.sku) {
     const exists = await Product.findOne({ sku: req.body.sku });
 
     if (exists) {
-      res.status(400);
-      throw new Error("Product with this SKU already exists");
+      return responseHandler.error(
+        res,
+        "Product with this SKU already exists",
+        400,
+      );
     }
   }
 
   const updateData = buildProductData(req, true);
 
-  if (req.body.openingStock !== undefined && req.body.currentStock === undefined) {
+  if (
+    req.body.openingStock !== undefined &&
+    req.body.currentStock === undefined
+  ) {
     updateData.currentStock = product.currentStock;
   }
 
@@ -242,43 +313,67 @@ const updateProduct = asyncHandler(async (req, res) => {
     {
       new: true,
       runValidators: true,
-    }
-  );
+    },
+  )
+    .populate("category", "name")
+    .populate("subCategory", "name")
+    .populate("brand", "name");
 
-  res.status(200).json({
-    success: true,
-    message: "Product updated successfully",
-    product: updatedProduct,
-  });
+  responseHandler.success(res, updatedProduct, "Product updated successfully");
 });
 
 const deleteProduct = asyncHandler(async (req, res) => {
+  if (!common.isValidId(req.params.id)) {
+    return responseHandler.error(res, "Invalid product ID", 400);
+  }
+
   const product = await Product.findById(req.params.id);
 
   if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+    return responseHandler.error(res, "Product not found", 404);
   }
 
   await product.deleteOne();
 
-  res.status(200).json({
-    success: true,
-    message: "Product deleted successfully",
-  });
+  responseHandler.success(res, null, "Product deleted successfully");
 });
 
 const getLowStockProducts = asyncHandler(async (req, res) => {
-  const products = await Product.find({
+  const paginationValidation = common.validatePagination(
+    req.query.page,
+    req.query.limit,
+  );
+
+  if (!paginationValidation.isValid) {
+    return responseHandler.validationError(res, paginationValidation.errors);
+  }
+
+  const { page, limit } = paginationValidation;
+  const skip = (page - 1) * limit;
+
+  const query = {
     $expr: { $lte: ["$currentStock", "$minStockLevel"] },
     status: "active",
-  }).sort({ currentStock: 1 });
+  };
 
-  res.status(200).json({
-    success: true,
-    count: products.length,
+  const total = await Product.countDocuments(query);
+
+  const products = await Product.find(query)
+    .populate("category", "name")
+    .populate("subCategory", "name")
+    .populate("brand", "name")
+    .sort({ currentStock: 1 })
+    .skip(skip)
+    .limit(limit);
+
+  responseHandler.paginated(
+    res,
     products,
-  });
+    page,
+    limit,
+    total,
+    "Low stock products retrieved successfully",
+  );
 });
 
 module.exports = {
