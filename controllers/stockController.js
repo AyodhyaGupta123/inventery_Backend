@@ -293,14 +293,16 @@ const getStockLevel = asyncHandler(async (req, res) => {
 const getLowStockProducts = asyncHandler(async (req, res) => {
   const { warehouseId, threshold = 10 } = req.query;
 
-  if (!warehouseId || !commonValidator.isValidId(warehouseId)) {
-    return responseHandler.error(res, "Invalid warehouse ID", 400);
-  }
-
   try {
+    if (warehouseId && !commonValidator.isValidId(warehouseId)) {
+      return responseHandler.error(res, "Invalid warehouse ID", 400);
+    }
+
     const lowStockProducts = await stockService.getLowStockProducts(
-      warehouseId,
-      Number(threshold)
+      warehouseId || null,
+      {
+        threshold: Number(threshold),
+      }
     );
 
     return responseHandler.success(
@@ -310,7 +312,13 @@ const getLowStockProducts = asyncHandler(async (req, res) => {
       200
     );
   } catch (error) {
-    return responseHandler.error(res, error.message, 500);
+    console.error("Low Stock Error:", error);
+
+    return responseHandler.error(
+      res,
+      error.message || "Failed to retrieve low stock products",
+      500
+    );
   }
 });
 

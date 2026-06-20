@@ -295,37 +295,34 @@ const stockService = {
     };
   },
 
-  /**
-   * Get low stock products in a warehouse
-   * @param {string} warehouseId - Warehouse ObjectId
-   * @param {object} options - Query options
-   * @returns {Promise<Array>} Low stock products
-   */
-  getLowStockProducts: async (warehouseId, options = {}) => {
-    const { limit = 20, skip = 0 } = options;
+ getLowStockProducts: async (
+  warehouseId,
+  {
+    limit = 20,
+    skip = 0,
+    threshold = 10,
+  } = {}
+) => {
+  const products = await Product.find({
+    status: "active",
+  })
+    .select(
+      "name sku category image currentStock minStockLevel"
+    )
+    .sort({ currentStock: 1 })
+    .skip(skip)
+    .limit(limit);
 
-    // Get all products with stock transactions for this warehouse
-    const lowStockProducts = await Product.find({
-      status: "active",
-    })
-      .select("name sku minStockLevel currentStock")
-      .sort({ currentStock: 1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Filter products below minimum stock level
-    const filtered = lowStockProducts.filter(
-      (product) => product.currentStock <= product.minStockLevel
+  return products.filter((product) => {
+    const currentStock = Number(product.currentStock || 0);
+    const minStock = Number(
+      product.minStockLevel || threshold
     );
 
-    return filtered;
-  },
-
-  /**
-   * Get inventory value for a warehouse
-   * @param {string} warehouseId - Warehouse ObjectId (optional)
-   * @returns {Promise<number>} Total inventory value
-   */
+    return currentStock <= minStock;
+  });
+},
+ 
   getInventoryValue: async (warehouseId = null) => {
     try {
       const matchStage = { status: "active" };
@@ -348,11 +345,7 @@ const stockService = {
     }
   },
 
-  /**
-   * Adjust stock (manual adjustment)
-   * @param {object} data - Adjustment details
-   * @returns {Promise<object>} Created StockTransaction
-   */
+
   adjustStock: async (data) => {
     const {
       productId,

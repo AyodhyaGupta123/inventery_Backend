@@ -1,4 +1,5 @@
 const asyncHandler = require("express-async-handler");
+const mongoose = require("mongoose");
 const responseHandler = require("../utils/responseHandler");
 const commonValidator = require("../validators/commonValidator");
 const StockTransaction = require("../models/StockTransaction");
@@ -6,11 +7,9 @@ const StockTransfer = require("../models/StockTransfer");
 const Order = require("../models/Order");
 const PurchaseOrder = require("../models/PurchaseOrder");
 const Product = require("../models/Product");
+const Report = require("../models/Report");
 
-/**
- * Get stock transaction reports with advanced filtering
- * GET /api/reports/stock-transactions?page=1&limit=20&type=stock-in&fromDate=&toDate=
- */
+
 const getStockTransactionReport = asyncHandler(async (req, res) => {
   // Validate pagination
   const paginationValidation = commonValidator.validatePagination(req.query);
@@ -78,10 +77,6 @@ const getStockTransactionReport = asyncHandler(async (req, res) => {
   }
 });
 
-/**
- * Get stock transfer reports
- * GET /api/reports/stock-transfers?page=1&limit=20&status=completed&fromDate=&toDate=
- */
 const getStockTransferReport = asyncHandler(async (req, res) => {
   // Validate pagination
   const paginationValidation = commonValidator.validatePagination(req.query);
@@ -316,11 +311,9 @@ const getInventorySnapshot = asyncHandler(async (req, res) => {
   }
 
   try {
-    const mongoose = require("mongoose");
-
     // Get all stock transactions for the warehouse
     const inventory = await StockTransaction.aggregate([
-      { $match: { warehouse: mongoose.Types.ObjectId(warehouseId) } },
+      { $match: { warehouse: new mongoose.Types.ObjectId(warehouseId) } },
       {
         $group: {
           _id: "$product",
@@ -368,10 +361,143 @@ const getInventorySnapshot = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Get saved custom reports (list)
+ * GET /api/reports?page=1&limit=20&type=Revenue&schedule=Weekly&search=xxx
+ */
+const getReports = asyncHandler(async (req, res) => {
+  const paginationValidation = commonValidator.validatePagination(req.query);
+  if (!paginationValidation.isValid) {
+    return responseHandler.validationError(res, paginationValidation.errors);
+  }
+
+  const { page, limit } = paginationValidation;
+  const { type, schedule, status, search } = req.query;
+
+  const filters = {};
+  if (type && type !== "all") filters.type = type;
+  if (schedule && schedule !== "all") filters.schedule = schedule;
+  if (status) filters.status = status;
+  if (search) filters.name = { $regex: search, $options: "i" };
+
+  try {
+    const skip = (page - 1) * limit;
+    const total = await Report.countDocuments(filters);
+
+    const reports = await Report.find(filters)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    return responseHandler.paginated(
+      res,
+      { reports },
+      page,
+      limit,
+      total,
+      "Reports retrieved successfully",
+      200
+    );
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
+});
+
+/**
+ * Get a single saved report
+ * GET /api/reports/:id
+ */
+const getReportById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!commonValidator.isValidId(id)) {
+    return responseHandler.error(res, "Invalid report ID", 400);
+  }
+
+  try {
+    const report = await Report.findById(id);
+    if (!report) return responseHandler.error(res, "Report not found", 404);
+    return responseHandler.success(res, { report }, "Report retrieved successfully", 200);
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
+});
+
+/**
+ * Create a saved report
+ * POST /api/reports
+ */
+const createReport = asyncHandler(async (req, res) => {
+  const { name, type, schedule } = req.body;
+
+  const errors = {};
+  if (!name || !name.trim()) errors.name = "Name is required";
+  if (!type) errors.type = "Type is required";
+  if (!schedule) errors.schedule = "Schedule is required";
+  if (Object.keys(errors).length > 0) {
+    return responseHandler.validationError(res, errors);
+  }
+
+  try {
+    const report = await Report.create({ name: name.trim(), type, schedule });
+    return responseHandler.success(res, { report }, "Report created successfully", 201);
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
+});
+
+/**
+ * Delete a saved report
+ * DELETE /api/reports/:id
+ */
+const deleteReport = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!commonValidator.isValidId(id)) {
+    return responseHandler.error(res, "Invalid report ID", 400);
+  }
+
+  try {
+    const report = await Report.findByIdAndDelete(id);
+    if (!report) return responseHandler.error(res, "Report not found", 404);
+    return responseHandler.success(res, null, "Report deleted successfully", 200);
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
+});
+
+/**
+ * Run a saved report
+ * POST /api/reports/:id/run
+ */
+const runReport = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!commonValidator.isValidId(id)) {
+    return responseHandler.error(res, "Invalid report ID", 400);
+  }
+
+  try {
+    const report = await Report.findById(id);
+    if (!report) return responseHandler.error(res, "Report not found", 404);
+
+    report.status = "Completed";
+    report.lastRun = new Date();
+    // TODO: hook actual report generation logic here, set report.rows from real count
+    await report.save();
+
+    return responseHandler.success(res, { report }, "Report run successfully", 200);
+  } catch (error) {
+    return responseHandler.error(res, error.message, 500);
+  }
+});
+
 module.exports = {
   getStockTransactionReport,
   getStockTransferReport,
   getOrderReport,
   getPurchaseOrderReport,
   getInventorySnapshot,
+  getReports,
+  getReportById,
+  createReport,
+  deleteReport,
+  runReport,
 };
